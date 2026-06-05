@@ -581,6 +581,12 @@ async function feishuLogin() {
     currentRole = dbRole === 'super_admin' ? 'super_admin' : (superUids.includes(feishuUid) ? 'super_admin' : (dbRole || 'employee'));
     debugLog('角色: db=' + dbRole + ' uid=' + feishuUid + ' → ' + currentRole, 'ok');
     console.log('登录成功:', { name: currentUser.name, feishuUid, role: currentRole });
+    // 临时调试：在页面顶部显示角色信息
+    const dbg = document.createElement('div');
+    dbg.id = 'role-debug';
+    dbg.style.cssText = 'position:fixed;top:0;left:0;z-index:99999;background:red;color:#fff;padding:8px 16px;font-size:14px;font-weight:bold;';
+    dbg.textContent = 'DEBUG: feishuUid=' + feishuUid + ' | dbRole=' + dbRole + ' | currentRole=' + currentRole;
+    document.body.appendChild(dbg);
     // 不再在前端调用 upsert_profile，Edge Function 已处理名字保护逻辑
     hideLoading();
     applyRole();

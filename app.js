@@ -581,12 +581,6 @@ async function feishuLogin() {
     currentRole = dbRole === 'super_admin' ? 'super_admin' : (superUids.includes(feishuUid) ? 'super_admin' : (dbRole || 'employee'));
     debugLog('角色: db=' + dbRole + ' uid=' + feishuUid + ' → ' + currentRole, 'ok');
     console.log('登录成功:', { name: currentUser.name, feishuUid, role: currentRole });
-    // 临时调试：在页面顶部显示角色信息
-    const dbg = document.createElement('div');
-    dbg.id = 'role-debug';
-    dbg.style.cssText = 'position:fixed;top:0;left:0;z-index:99999;background:red;color:#fff;padding:8px 16px;font-size:12px;max-width:100vw;word-break:break-all;line-height:1.6;';
-    dbg.textContent = 'DEBUG: feishuUid=' + feishuUid + ' | dbRole=' + dbRole + ' | currentRole=' + currentRole + ' | rawUser=' + JSON.stringify(data.user).substring(0, 300);
-    document.body.appendChild(dbg);
     // 不再在前端调用 upsert_profile，Edge Function 已处理名字保护逻辑
     hideLoading();
     applyRole();
@@ -807,7 +801,7 @@ function renderInventory() {
   const isAdmin = ['super_admin', 'admin'].includes(currentRole);
   let head = '<tr>';
   if (isAdmin) head += '<th class="px-3 py-3 text-left"><input type="checkbox" id="inv-select-all" onchange="toggleInvSelectAll(this)" class="rounded"/></th>';
-  ['产品名称', '简称', '规格', '当前库存', '预警阈值', '单位', '更新时间', isAdmin ? '操作' : ''].forEach(h => { head += `<th class="px-4 py-3 text-left font-medium">${h}</th>`; });
+  ['产品名称', '简称', '规格', '当前库存', '预警阈值', '单位', '单价', '更新时间', isAdmin ? '操作' : ''].forEach(h => { head += `<th class="px-4 py-3 text-left font-medium">${h}</th>`; });
   head += '</tr>';
   document.getElementById('inventory-head').innerHTML = head;
   if (filtered.length === 0) { document.getElementById('inventory-body').innerHTML = ''; document.getElementById('inventory-empty').classList.remove('hidden'); return; }
@@ -817,7 +811,7 @@ function renderInventory() {
     const chk = checkedIds.has(p.id) ? ' checked' : '';
     const chkHtml = isAdmin ? `<td class="px-3 py-3"><input type="checkbox" class="inv-chk rounded" value="${p.id}"${chk} onchange="updateBatchStockBtn()" /></td>` : '';
     const btnHtml = isAdmin ? `<button onclick="openRestockModal('${p.id}')" class="text-xs text-green-600 hover:underline mr-2">补货</button><button onclick="openProductModal('${p.id}')" class="text-xs text-blue-500 hover:underline mr-2">编辑</button><button onclick="deleteProduct('${p.id}')" class="text-xs text-red-500 hover:underline">删除</button>` : '';
-    return `<tr class="${isLow ? 'stock-warn' : ''} border-b border-gray-50 hover:bg-gray-50">${chkHtml}<td class="px-4 py-3 font-medium">${esc(p.name)}</td><td class="px-4 py-3 text-gray-500">${esc(p.short_name || '-')}</td><td class="px-4 py-3 text-gray-400">${esc(p.sku || '-')}</td><td class="px-4 py-3 ${isLow ? 'text-red-600 font-bold' : 'text-green-600'}">${p.current_stock} ${esc(p.unit || '个')}</td><td class="px-4 py-3 text-xs text-gray-400">${p.min_stock_alert}</td><td class="px-4 py-3">${esc(p.unit || '个')}</td><td class="px-4 py-3 text-xs text-gray-400">${(p.updated_at || p.created_at || '').slice(0, 10)}</td><td class="px-4 py-3">${btnHtml}</td></tr>`;
+    return `<tr class="${isLow ? 'stock-warn' : ''} border-b border-gray-50 hover:bg-gray-50">${chkHtml}<td class="px-4 py-3 font-medium">${esc(p.name)}</td><td class="px-4 py-3 text-gray-500">${esc(p.short_name || '-')}</td><td class="px-4 py-3 text-gray-400">${esc(p.sku || '-')}</td><td class="px-4 py-3 ${isLow ? 'text-red-600 font-bold' : 'text-green-600'}">${p.current_stock} ${esc(p.unit || '个')}</td><td class="px-4 py-3 text-xs text-gray-400">${p.min_stock_alert}</td><td class="px-4 py-3">${esc(p.unit || '个')}</td><td class="px-4 py-3 text-sm font-medium text-amber-600">$${p.price || 0}</td><td class="px-4 py-3 text-xs text-gray-400">${(p.updated_at || p.created_at || '').slice(0, 10)}</td><td class="px-4 py-3">${btnHtml}</td></tr>`;
   }).join('');
   updateBatchStockBtn();
 }
@@ -835,6 +829,7 @@ function openProductModal(id) {
       document.getElementById('product-stock').value = p.current_stock || 0;
       document.getElementById('product-alert').value = p.min_stock_alert || 10;
       document.getElementById('product-unit').value = p.unit || '个';
+      document.getElementById('product-price').value = p.price || 0;
     }
   } else {
     originalStock = 0;
@@ -844,6 +839,7 @@ function openProductModal(id) {
     document.getElementById('product-stock').value = 0;
     document.getElementById('product-alert').value = 10;
     document.getElementById('product-unit').value = '个';
+    document.getElementById('product-price').value = 0;
   }
   openModal('modal-product');
 }
@@ -856,6 +852,7 @@ async function saveProduct() {
   const stock = parseInt(document.getElementById('product-stock').value) || 0;
   const alertVal = parseInt(document.getElementById('product-alert').value) ?? 10;
   const unit = document.getElementById('product-unit').value.trim() || '个';
+  const price = parseFloat(document.getElementById('product-price').value) || 0;
   if (!name) { showToast('请填写产品名称', 'warning'); return; }
   //  复合唯一性预检：名称+简称+规格+单位 完全一致视为同一产品
   const conflict = allProducts.find(p =>
@@ -887,7 +884,7 @@ async function saveProduct() {
       if (logErr) console.warn('库存调整日志写入失败:', logErr.message);
     }
     // 保存产品（upsert_product 会覆盖库存值为 stock，与 adjust_inventory 调过的值一致）
-    const { data, error } = await sb.rpc('upsert_product', { p_id: id, p_name: name, p_short_name: shortName, p_sku: sku || null, p_stock: stock, p_alert: alertVal, p_unit: unit, p_feishu_user_id: feishuUid });
+    const { data, error } = await sb.rpc('upsert_product', { p_id: id, p_name: name, p_short_name: shortName, p_sku: sku || null, p_stock: stock, p_alert: alertVal, p_unit: unit, p_feishu_user_id: feishuUid, p_price: price });
     if (error) throw error;
     closeModal('modal-product');
     await Promise.all([loadProducts(), loadInventoryLogs()]);
@@ -4502,3 +4499,28 @@ async function loadDistributionStats() {
 }
 
 window.addEventListener('DOMContentLoaded', init);
+
+// ============ 价格同步到报价助手 ============
+function syncPriceFromProducts() {
+  // 从库存系统的 allProducts 匹配 QUOTE_PRODUCTS，用产品名+规格(sku)做匹配
+  if (!allProducts || allProducts.length === 0) { showToast('库存系统暂无产品', 'warning'); return; }
+  let updated = 0;
+  allProducts.forEach(p => {
+    if (!p.name || p.price === null || p.price === undefined) return;
+    // 先用 sku（规格）精确匹配 QUOTE_PRODUCTS 的 code
+    let matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.code) === normalizeStr(p.sku || '') && normalizeStr(qp.name) === normalizeStr(p.name));
+    // 再用名称模糊匹配（只匹配同名且唯一）
+    if (!matched) {
+      const candidates = QUOTE_PRODUCTS.filter(qp => normalizeStr(qp.name) === normalizeStr(p.name));
+      if (candidates.length === 1) matched = candidates[0];
+    }
+    if (matched) {
+      const oldPrice = matched.price;
+      matched.price = p.price;
+      if (oldPrice !== p.price) updated++;
+    }
+  });
+  // 同步后存储到 localStorage
+  localStorage.setItem('quote_products_prices', JSON.stringify(QUOTE_PRODUCTS.map(qp => ({ code: qp.code, name: qp.name, price: qp.price }))));
+  showToast(`价格同步完成：更新 ${updated} 条`, 'success');
+}

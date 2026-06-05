@@ -684,7 +684,7 @@ html.dark .hover\:bg-gray-50:hover{background:#2a2a40 !important}
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script async src="https://lf-scm-cn.feishucdn.com/lark/op/h5-js-sdk-1.5.44.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="app.js?v=20260605g"></script>
+<script defer src="app.js?v=20260605h"></script>
 
 <!-- 批量导入产品弹窗 -->
 <div id="modal-batch-product" class="fixed inset-0 hidden items-center justify-center p-4 bg-black/30" style="z-index:60">
@@ -696,8 +696,8 @@ html.dark .hover\:bg-gray-50:hover{background:#2a2a40 !important}
   <div class="p-5 space-y-4">
     <div class="bg-blue-50 rounded-lg p-3 text-xs text-blue-700 space-y-1">
       <p><b>格式：</b>每行一条，逗号分隔</p>
-      <p>产品名称,简称(选填),规格(选填),库存数量(选填),预警阈值(选填),单位(选填)</p>
-      <p>示例：肽类冻干粉,冻干粉,A001,100,10,瓶</p>
+      <p>产品名称,简称(选填),规格(选填),库存数量(选填),预警阈值(选填),单位(选填),价格(选填)</p>
+      <p>示例：肽类冻干粉,冻干粉,A001,100,10,瓶,15.50</p>
     </div>
     <textarea id="batch-product-paste" rows="6" placeholder="粘贴文本，每行一个产品…" class="w-full text-sm border border-gray-200 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-400 resize-none font-mono"></textarea>
     <div class="flex justify-end gap-2">

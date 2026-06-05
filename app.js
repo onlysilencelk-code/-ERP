@@ -4518,15 +4518,24 @@ function syncPriceFromProducts() {
     if (p.short_name) {
       matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.code) === normalizeStr(p.short_name) && normalizeStr(qp.name) === normalizeStr(p.name));
     }
-    // 2) sku 匹配 QUOTE_PRODUCTS 的 code
+    // 2) sku 匹配 QUOTE_PRODUCTS 的 code（如 sku 直接就是 RT10）
     if (!matched && p.sku) {
       matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.code) === normalizeStr(p.sku) && normalizeStr(qp.name) === normalizeStr(p.name));
     }
-    // 3) sku 匹配 QUOTE_PRODUCTS 的 spec（如 10mg×10vials → 10mg*10vials）
+    // 3) 规格数字提取匹配（同名产品中，从 sku 和 spec 提取数字来匹配）
     if (!matched && p.sku) {
-      matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.spec) === normalizeStr(p.sku) && normalizeStr(qp.name) === normalizeStr(p.name));
+      const sameName = QUOTE_PRODUCTS.filter(qp => normalizeStr(qp.name) === normalizeStr(p.name));
+      // 提取 sku 中的规格数字（如 "10mg×10vials" → 10, "5000iu*10vials" → 5000）
+      const skuSpec = extractSpecNum(p.sku);
+      if (skuSpec !== null && sameName.length > 1) {
+        matched = sameName.find(qp => extractSpecNum(qp.spec) === skuSpec);
+      }
     }
-    // 4) 名称唯一匹配（同名且只有一条）
+    // 4) sku 与 spec 去特殊字符后匹配
+    if (!matched && p.sku) {
+      matched = QUOTE_PRODUCTS.find(qp => normalizeSpec(p.sku) === normalizeSpec(qp.spec) && normalizeStr(qp.name) === normalizeStr(p.name));
+    }
+    // 5) 名称唯一匹配（同名且只有一条）
     if (!matched) {
       const candidates = QUOTE_PRODUCTS.filter(qp => normalizeStr(qp.name) === normalizeStr(p.name));
       if (candidates.length === 1) matched = candidates[0];
@@ -4540,4 +4549,16 @@ function syncPriceFromProducts() {
   // 同步后存储到 localStorage
   localStorage.setItem('quote_products_prices', JSON.stringify(QUOTE_PRODUCTS.map(qp => ({ code: qp.code, name: qp.name, price: qp.price }))));
   showToast(`价格同步完成：更新 ${updated} 条`, 'success');
+}
+
+// 提取规格中的数字（mg 或 iu），如 "10mg×10vials" → 10, "5000iu*10vials" → 5000, "0.1mg" → 0.1
+function extractSpecNum(s) {
+  if (!s) return null;
+  const m = String(s).match(/(\d+\.?\d*)\s*(mg|iu|ml)/i);
+  return m ? parseFloat(m[1]) : null;
+}
+
+// 规格字符串标准化：去除 *、×、x、空格、换行等
+function normalizeSpec(s) {
+  return (s || '').toLowerCase().replace(/[*×x\s]/g, '');
 }

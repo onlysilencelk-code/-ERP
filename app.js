@@ -3894,7 +3894,9 @@ async function autoQuoteOrder() {
     if (!hit) { skipped++; continue; }
     const priceInput = document.getElementById(`item-price-${idx}`);
     if (priceInput) {
-      priceInput.value = hit.price;
+      // 优先使用库存产品的 price，没有再用 QUOTE_PRODUCTS 的默认价
+      const stockPrice = parseFloat(product.price);
+      priceInput.value = (!Number.isNaN(stockPrice) && stockPrice > 0) ? stockPrice : hit.price;
       filled++;
     }
   }

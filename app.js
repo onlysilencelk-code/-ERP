@@ -396,7 +396,7 @@ function fuzzyProductSearch(keyword) {
 // ============ 配置 ============
 const SUPABASE_URL = 'https://kqntsjvnlpuzniownrse.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxbnRzanZubHB1em5pb3ducnNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2NDY4NjYsImV4cCI6MjA5NjIyMjg2Nn0.o01n11WmqavOt_AEbtg9JCD4ULFXWE5-gJbrUa1IYvo';
-const FEISHU_APP_ID = 'cli_aaa8291b2eb91be9';
+const FEISHU_APP_ID = 'cli_aaa81eb242f81be5';
 
 // ============ 全局状态 ============
 let sb, currentUser = null, currentRole = 'employee', feishuUid = '';

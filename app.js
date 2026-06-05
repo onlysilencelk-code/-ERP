@@ -584,8 +584,8 @@ async function feishuLogin() {
     // 临时调试：在页面顶部显示角色信息
     const dbg = document.createElement('div');
     dbg.id = 'role-debug';
-    dbg.style.cssText = 'position:fixed;top:0;left:0;z-index:99999;background:red;color:#fff;padding:8px 16px;font-size:14px;font-weight:bold;';
-    dbg.textContent = 'DEBUG: feishuUid=' + feishuUid + ' | dbRole=' + dbRole + ' | currentRole=' + currentRole;
+    dbg.style.cssText = 'position:fixed;top:0;left:0;z-index:99999;background:red;color:#fff;padding:8px 16px;font-size:12px;max-width:100vw;word-break:break-all;line-height:1.6;';
+    dbg.textContent = 'DEBUG: feishuUid=' + feishuUid + ' | dbRole=' + dbRole + ' | currentRole=' + currentRole + ' | rawUser=' + JSON.stringify(data.user).substring(0, 300);
     document.body.appendChild(dbg);
     // 不再在前端调用 upsert_profile，Edge Function 已处理名字保护逻辑
     hideLoading();

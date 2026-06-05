@@ -4508,14 +4508,25 @@ window.addEventListener('DOMContentLoaded', init);
 
 // ============ 价格同步到报价助手 ============
 function syncPriceFromProducts() {
-  // 从库存系统的 allProducts 匹配 QUOTE_PRODUCTS，用产品名+规格(sku)做匹配
+  // 从库存系统的 allProducts 匹配 QUOTE_PRODUCTS
   if (!allProducts || allProducts.length === 0) { showToast('库存系统暂无产品', 'warning'); return; }
   let updated = 0;
   allProducts.forEach(p => {
     if (!p.name || p.price === null || p.price === undefined) return;
-    // 先用 sku（规格）精确匹配 QUOTE_PRODUCTS 的 code
-    let matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.code) === normalizeStr(p.sku || '') && normalizeStr(qp.name) === normalizeStr(p.name));
-    // 再用名称模糊匹配（只匹配同名且唯一）
+    let matched = null;
+    // 1) 简称(short_name) 匹配 QUOTE_PRODUCTS 的 code（如 RT10 → RT10）
+    if (p.short_name) {
+      matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.code) === normalizeStr(p.short_name) && normalizeStr(qp.name) === normalizeStr(p.name));
+    }
+    // 2) sku 匹配 QUOTE_PRODUCTS 的 code
+    if (!matched && p.sku) {
+      matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.code) === normalizeStr(p.sku) && normalizeStr(qp.name) === normalizeStr(p.name));
+    }
+    // 3) sku 匹配 QUOTE_PRODUCTS 的 spec（如 10mg×10vials → 10mg*10vials）
+    if (!matched && p.sku) {
+      matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.spec) === normalizeStr(p.sku) && normalizeStr(qp.name) === normalizeStr(p.name));
+    }
+    // 4) 名称唯一匹配（同名且只有一条）
     if (!matched) {
       const candidates = QUOTE_PRODUCTS.filter(qp => normalizeStr(qp.name) === normalizeStr(p.name));
       if (candidates.length === 1) matched = candidates[0];

@@ -380,8 +380,8 @@ html.dark .hover\:bg-gray-50:hover{background:#2a2a40 !important}
           <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <p class="text-sm font-bold">产品重量库</p>
             <div class="flex gap-2">
-              <button onclick="syncWeightProductsToCloud()" class="text-xs px-3 py-1.5 rounded-lg bg-gray-500 hover:bg-gray-600 text-white transition-colors">↑ 同步到云端</button>
-              <button onclick="openWeightProductModal()" class="text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors">+ 新增产品</button>
+              <button onclick="syncWeightProductsToCloud()" class="super-admin-only hidden text-xs px-3 py-1.5 rounded-lg bg-gray-500 hover:bg-gray-600 text-white transition-colors">↑ 同步到云端</button>
+              <button onclick="openWeightProductModal()" class="super-admin-only hidden text-xs px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white transition-colors">+ 新增产品</button>
             </div>
           </div>
           <div class="overflow-x-auto">
@@ -399,8 +399,8 @@ html.dark .hover\:bg-gray-50:hover{background:#2a2a40 !important}
           <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
             <p class="text-sm font-bold">运费模板管理</p>
             <div class="flex gap-2">
-              <button onclick="syncShippingTemplatesToCloud()" class="text-xs px-3 py-1.5 rounded-lg bg-gray-500 hover:bg-gray-600 text-white transition-colors">↑ 同步到云端</button>
-              <button onclick="openShippingTemplateModal()" class="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors">+ 新增模板</button>
+              <button onclick="syncShippingTemplatesToCloud()" class="super-admin-only hidden text-xs px-3 py-1.5 rounded-lg bg-gray-500 hover:bg-gray-600 text-white transition-colors">↑ 同步到云端</button>
+              <button onclick="openShippingTemplateModal()" class="super-admin-only hidden text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors">+ 新增模板</button>
             </div>
           </div>
           <div class="overflow-x-auto">
@@ -473,7 +473,9 @@ html.dark .hover\:bg-gray-50:hover{background:#2a2a40 !important}
   <button onclick="switchPage('dashboard')" class="mobile-nav-btn flex flex-col items-center py-1 px-3 text-xs text-gray-400"><svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/></svg>仪表盘</button>
   <button onclick="switchPage('inventory')" class="mobile-nav-btn flex flex-col items-center py-1 px-3 text-xs text-gray-400"><svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5"/></svg>库存</button>
   <button onclick="switchPage('orders')" class="mobile-nav-btn flex flex-col items-center py-1 px-3 text-xs text-gray-400"><svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.241H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007zM8.625 10.5a.375.375 0 11-.75 0 .375.375 0 01.75 0zm7.5 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/></svg>订单</button>
-  <button id="mobile-nav-logs" onclick="switchPage('logs')" class="mobile-nav-btn flex flex-col items-center py-1 px-3 text-xs text-gray-400"><svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>日志</button>
+  <button onclick="switchPage('quote')" class="mobile-nav-btn flex flex-col items-center py-1 px-3 text-xs text-gray-400"><svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/></svg>报价</button>
+  <button onclick="switchPage('shipping')" class="mobile-nav-btn flex flex-col items-center py-1 px-3 text-xs text-gray-400"><svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V14.25M17.25 4.5a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 01-1.125-1.125V4.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125.504 1.125 1.125V18"/></svg>运费</button>
+  <button id="mobile-nav-logs" onclick="switchPage('logs')" class="mobile-nav-btn flex flex-col items-center py-1 px-3 text-xs text-gray-400 hidden"><svg class="w-5 h-5 mb-0.5" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>日志</button>
 </nav>
 
 <!-- 产品重量弹窗 -->

@@ -1750,7 +1750,7 @@ async function handleBatchProductPaste() {
   const text = document.getElementById('batch-product-paste').value.trim();
   if (!text) { showToast('请先粘贴文本', 'warning'); return; }
   const lines = text.split('\n').map(l => l.trim()).filter(l => l);
-  const headerSet = new Set(['产品名称', '简称', '规格', '库存数量', '预警阈值', '单位', '产品', '规格', '简称', '库存', '预警', '单位']);
+  const headerSet = new Set(['产品名称', '简称', '规格', '库存数量', '预警阈值', '单位', '价格', '产品', '库存', '预警', '单价']);
   const errors = [];
   const products = [];
   lines.forEach((line, idx) => {
@@ -1764,7 +1764,8 @@ async function handleBatchProductPaste() {
       sku: parts[2] || '',
       stock: parseInt(parts[3]) || 0,
       alert: parseInt(parts[4]) || 10,
-      unit: parts[5] || '个'
+      unit: parts[5] || '个',
+      price: parseFloat(parts[6]) || 0
     });
   });
 
@@ -1803,9 +1804,9 @@ async function handleBatchProductPaste() {
   // 显示预览
   const head = document.getElementById('batch-product-head');
   const body = document.getElementById('batch-product-body');
-  head.innerHTML = '<tr>' + ['产品名称','简称','规格','库存','预警阈值','单位'].map(h => '<th class="px-2 py-1 text-left">' + h + '</th>').join('') + '</tr>';
+  head.innerHTML = '<tr>' + ['产品名称','简称','规格','库存','预警阈值','单位','价格'].map(h => '<th class="px-2 py-1 text-left">' + h + '</th>').join('') + '</tr>';
   body.innerHTML = products.map(p => '<tr class="border-b border-gray-100">' +
-    [p.name, p.short_name, p.sku, p.stock, p.alert, p.unit].map(v => '<td class="px-2 py-1">' + esc(v) + '</td>').join('') + '</tr>').join('');
+    [p.name, p.short_name, p.sku, p.stock, p.alert, p.unit, p.price].map(v => '<td class="px-2 py-1">' + esc(v) + '</td>').join('') + '</tr>').join('');
   document.getElementById('batch-product-count').textContent = '共 ' + products.length + ' 条，点击"确认导入"写入数据库';
   document.getElementById('batch-product-errors').textContent = errors.length ? errors.join('; ') : '';
   document.getElementById('batch-product-review').classList.remove('hidden');
@@ -1846,7 +1847,8 @@ async function saveBatchProducts(products) {
           p_stock: existing.current_stock || 0,
           p_alert: p.alert || existing.min_stock_alert || 10,
           p_unit: p.unit || existing.unit || '个',
-          p_feishu_user_id: feishuUid
+          p_feishu_user_id: feishuUid,
+          p_price: p.price || existing.price || 0
         });
         if (error) throw error;
         // 库存有变动时写日志+调库存
@@ -1871,7 +1873,8 @@ async function saveBatchProducts(products) {
           p_stock: p.stock,
           p_alert: p.alert || 10,
           p_unit: p.unit || '个',
-          p_feishu_user_id: feishuUid
+          p_feishu_user_id: feishuUid,
+          p_price: p.price || 0
         });
         if (error) throw error;
       }

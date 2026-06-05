@@ -442,6 +442,7 @@ async function init() {
       }
       hideLoading();
       applyRole();
+      restoreQuotePrices(); // 恢复已同步的报价价格
       // 预加载运费模板和产品重量数据（避免首次新增订单时运费识别失败）
       try { await loadShippingTemplates(); } catch (e) { console.warn('预加载运费模板失败', e); }
       try { await loadWeightProducts(); } catch (e) { console.warn('预加载产品重量失败', e); }
@@ -587,6 +588,7 @@ async function feishuLogin() {
     // 不再在前端调用 upsert_profile，Edge Function 已处理名字保护逻辑
     hideLoading();
     applyRole();
+    restoreQuotePrices(); // 恢复已同步的报价价格
     switchPage('dashboard');
     Promise.all([loadProfiles(), loadProducts(), loadOrders()]).then(() => refreshCurrentPage());
   } catch (err) { console.error(err); throw err; }
@@ -4507,48 +4509,75 @@ async function loadDistributionStats() {
 window.addEventListener('DOMContentLoaded', init);
 
 // ============ 价格同步到报价助手 ============
-function syncPriceFromProducts() {
-  // 从库存系统的 allProducts 匹配 QUOTE_PRODUCTS
+async function syncPriceFromProducts() {
+  // 先强制重载库存数据，确保拿到最新价格
+  await loadProducts();
   if (!allProducts || allProducts.length === 0) { showToast('库存系统暂无产品', 'warning'); return; }
-  let updated = 0;
+  let updated = 0, matchedCount = 0;
   allProducts.forEach(p => {
-    if (!p.name || p.price === null || p.price === undefined) return;
+    const price = parseFloat(p.price);
+    if (!p.name || Number.isNaN(price)) { console.log('[sync skip]', p.name, 'price invalid:', p.price); return; }
     let matched = null;
-    // 1) 简称(short_name) 匹配 QUOTE_PRODUCTS 的 code（如 RT10 → RT10）
+    // 1) 简称(short_name) 匹配 QUOTE_PRODUCTS 的 code
     if (p.short_name) {
       matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.code) === normalizeStr(p.short_name) && normalizeStr(qp.name) === normalizeStr(p.name));
+      if (matched) console.log('[sync match1]', p.name, p.short_name, '->', matched.code, matched.price, '=>', price);
     }
-    // 2) sku 匹配 QUOTE_PRODUCTS 的 code（如 sku 直接就是 RT10）
+    // 2) sku 匹配 QUOTE_PRODUCTS 的 code
     if (!matched && p.sku) {
       matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.code) === normalizeStr(p.sku) && normalizeStr(qp.name) === normalizeStr(p.name));
+      if (matched) console.log('[sync match2]', p.name, p.sku, '->', matched.code, matched.price, '=>', price);
     }
-    // 3) 规格数字提取匹配（同名产品中，从 sku 和 spec 提取数字来匹配）
+    // 3) 规格数字提取匹配
     if (!matched && p.sku) {
       const sameName = QUOTE_PRODUCTS.filter(qp => normalizeStr(qp.name) === normalizeStr(p.name));
-      // 提取 sku 中的规格数字（如 "10mg×10vials" → 10, "5000iu*10vials" → 5000）
       const skuSpec = extractSpecNum(p.sku);
       if (skuSpec !== null && sameName.length > 1) {
         matched = sameName.find(qp => extractSpecNum(qp.spec) === skuSpec);
+        if (matched) console.log('[sync match3]', p.name, p.sku, 'specNum=' + skuSpec, '->', matched.code, matched.price, '=>', price);
       }
     }
     // 4) sku 与 spec 去特殊字符后匹配
     if (!matched && p.sku) {
       matched = QUOTE_PRODUCTS.find(qp => normalizeSpec(p.sku) === normalizeSpec(qp.spec) && normalizeStr(qp.name) === normalizeStr(p.name));
+      if (matched) console.log('[sync match4]', p.name, p.sku, '->', matched.code, matched.price, '=>', price);
     }
-    // 5) 名称唯一匹配（同名且只有一条）
+    // 5) 名称唯一匹配
     if (!matched) {
       const candidates = QUOTE_PRODUCTS.filter(qp => normalizeStr(qp.name) === normalizeStr(p.name));
-      if (candidates.length === 1) matched = candidates[0];
+      if (candidates.length === 1) { matched = candidates[0]; console.log('[sync match5]', p.name, '->', matched.code, matched.price, '=>', price); }
     }
     if (matched) {
-      const oldPrice = matched.price;
-      matched.price = p.price;
-      if (oldPrice !== p.price) updated++;
+      matchedCount++;
+      if (matched.price !== price) { matched.price = price; updated++; }
+    } else {
+      console.log('[sync no match]', p.name, p.short_name, p.sku, 'price=' + price);
     }
   });
-  // 同步后存储到 localStorage
+  // 持久化到 localStorage
   localStorage.setItem('quote_products_prices', JSON.stringify(QUOTE_PRODUCTS.map(qp => ({ code: qp.code, name: qp.name, price: qp.price }))));
-  showToast(`价格同步完成：更新 ${updated} 条`, 'success');
+  // 如果当前有搜索结果，强制刷新显示
+  const quoteResult = document.getElementById('quote-result');
+  if (quoteResult && quoteResult.innerHTML.trim()) {
+    const input = document.getElementById('quote-input');
+    if (input && input.value.trim()) parseQuoteInput();
+  }
+  showToast(`同步完成：匹配 ${matchedCount} 条，更新 ${updated} 条`, updated > 0 ? 'success' : 'warning');
+}
+
+// 页面加载时从 localStorage 恢复已同步的价格
+function restoreQuotePrices() {
+  try {
+    const saved = localStorage.getItem('quote_products_prices');
+    if (!saved) return;
+    const map = JSON.parse(saved);
+    if (!Array.isArray(map)) return;
+    map.forEach(item => {
+      const qp = QUOTE_PRODUCTS.find(p => p.code === item.code && p.name === item.name);
+      if (qp && item.price !== undefined) qp.price = item.price;
+    });
+    console.log('[restore] 已恢复 ' + map.length + ' 条价格');
+  } catch (e) { console.warn('[restore] 恢复失败:', e); }
 }
 
 // 提取规格中的数字（mg 或 iu），如 "10mg×10vials" → 10, "5000iu*10vials" → 5000, "0.1mg" → 0.1

@@ -73,7 +73,10 @@ async function getExchangeRates() {
         AUD: data.rates.AUD,
         CAD: data.rates.CAD,
         CNY: data.rates.CNY,
-        GBP: data.rates.GBP
+        GBP: data.rates.GBP,
+        COP: data.rates.COP,
+        MXN: data.rates.MXN,
+        PHP: data.rates.PHP
       };
       _exchangeRatesExpiry = now + 30 * 60 * 1000;
       console.log('汇率已更新:', _exchangeRates);
@@ -82,7 +85,7 @@ async function getExchangeRates() {
   } catch (e) {
     console.warn('汇率获取失败，使用默认值', e);
   }
-  return _exchangeRates || { EUR: 0.92, AUD: 1.53, CAD: 1.36 };
+  return _exchangeRates || { EUR: 0.92, AUD: 1.53, CAD: 1.36, GBP: 0.79, COP: 4150, MXN: 17.5, PHP: 56 };
 }
 
 // 更新结算货币汇率显示
@@ -2548,10 +2551,10 @@ async function appendCurrency(currency) {
   const rates = await getExchangeRates();
   const rate = rates[currency];
   if (!rate) { showToast('汇率获取失败', 'error'); return; }
-  const symbol = { EUR: '€', AUD: 'A$', CAD: 'C$' }[currency];
-  // 先清除之前的所有换算后缀（匹配 =€, =A$, =C$ 开头的数字）
+  const symbol = { EUR: '€', AUD: 'A$', CAD: 'C$', GBP: '£', COP: 'COL$', MXN: 'MX$', PHP: '₱' }[currency];
+  // 先清除之前的所有换算后缀（匹配 =€, =A$, =C$, =£, =COL$, =MX$, =₱ 开头的数字）
   el.querySelectorAll('div.text-sm.font-mono').forEach(div => {
-    div.textContent = div.textContent.replace(/=(?:€|A\$|C\$)[\d\.]+/g, '');
+    div.textContent = div.textContent.replace(/=(?:€|A\$|C\$|£|COL\$|MX\$|₱)[\d\.]+/g, '');
   });
   // 再追加新币种换算
   el.querySelectorAll('div.text-sm.font-mono').forEach(div => {
@@ -2597,7 +2600,7 @@ function updateSummary(el, currency, rate) {
   if (count === 0) return;
   const existing = el.querySelector('.quote-summary');
   if (existing) existing.remove();
-  const labels = { USD: ['USD', ''], EUR: ['€', 'EUR'], AUD: ['A$', 'AUD'], CAD: ['C$', 'CAD'] };
+  const labels = { USD: ['USD', ''], EUR: ['€', 'EUR'], AUD: ['A$', 'AUD'], CAD: ['C$', 'CAD'], GBP: ['£', 'GBP'], COP: ['COL$', 'COP'], MXN: ['MX$', 'MXN'], PHP: ['₱', 'PHP'] };
   const [sym, code] = labels[currency] || ['USD', ''];
   const displayTotal = currency === 'USD' ? totalUSD : (totalUSD * rate).toFixed(2);
   const displayLabel = currency === 'USD' ? 'USD' : `${code}`;
@@ -3112,9 +3115,9 @@ function downloadBlob(blob, filename) {
 let shippingTemplates = [];
 let shippingTemplatesLoaded = false;
 const SHIP_TPL_KEY = 'oi_shipping_templates';
-const CURRENCY_SYMBOLS = { USD: '$', AUD: 'A$', CNY: '¥', EUR: '€', GBP: '£' };
+const CURRENCY_SYMBOLS = { USD: '$', AUD: 'A$', CNY: '¥', EUR: '€', GBP: '£', COP: 'COL$', MXN: 'MX$', PHP: '₱' };
 const PAYMENT_LABELS = { bank_transfer: '银行转账', paypal: 'PayPal', wise: 'Wise', crypto: '加密货币' };
-const CURRENCY_FULL = { USD: 'USD 美元', EUR: 'EUR 欧元', AUD: 'AUD 澳元', CAD: 'CAD 加元' };
+const CURRENCY_FULL = { USD: 'USD 美元', EUR: 'EUR 欧元', AUD: 'AUD 澳元', CAD: 'CAD 加元', GBP: 'GBP 英镑', COP: 'COP 哥伦比亚比索', MXN: 'MXN 墨西哥比索', PHP: 'PHP 菲律宾比索' };
 function curSym(c) { return CURRENCY_SYMBOLS[c] || c + ' '; }
 
 // ============ 结算货币 & 汇率 ============
@@ -4134,7 +4137,7 @@ async function autoCalcShipping() {
 }
 
 function curSym(currency) {
-  return { USD: '$', EUR: '€', AUD: 'A$', CAD: 'C$', CNY: '¥', GBP: '£' }[currency] || currency;
+  return { USD: '$', EUR: '€', AUD: 'A$', CAD: 'C$', CNY: '¥', GBP: '£', COP: 'COL$', MXN: 'MX$', PHP: '₱' }[currency] || currency;
 }
 
 
@@ -4290,7 +4293,7 @@ async function appendShipCurrency(currency) {
   const rates = await getExchangeRates();
   const rate = rates[currency];
   if (!rate) { showToast('汇率获取失败', 'error'); return; }
-  const symbols = { EUR: '€', AUD: 'A$', CAD: 'C$', CNY: '¥', GBP: '£' };
+  const symbols = { EUR: '€', AUD: 'A$', CAD: 'C$', CNY: '¥', GBP: '£', COP: 'COL$', MXN: 'MX$', PHP: '₱' };
   const sym = symbols[currency] || '';
   // 将 lastShipTotal 从 lastShipCurrency 转换到 target currency
   let targetAmount;
@@ -4305,7 +4308,7 @@ async function appendShipCurrency(currency) {
   const detail = document.getElementById('ship-result-detail');
   detail.querySelectorAll('.ship-converted').forEach(el => el.remove());
   // 构建复制文本：运费=XXUSD=A$XX
-  const srcSymbol = { USD: '$', EUR: '€', AUD: 'A$', CAD: 'C$', CNY: '¥', GBP: '£' }[lastShipCurrency] || '';
+  const srcSymbol = { USD: '$', EUR: '€', AUD: 'A$', CAD: 'C$', CNY: '¥', GBP: '£', COP: 'COL$', MXN: 'MX$', PHP: '₱' }[lastShipCurrency] || '';
   const copyText = `运费=${srcSymbol}${lastShipTotal.toFixed(2)}${lastShipCurrency}=${sym}${targetAmount.toFixed(2)}`;
   // 创建带复制按钮的结果行
   const wrap = document.createElement('div');

@@ -608,8 +608,12 @@ function applyRole() {
   const mobileLogs = document.getElementById('mobile-nav-logs');
   if (mobileLogs) mobileLogs.classList.toggle('hidden', !isAdmin);
   document.getElementById('inventory-admin-btns').classList.toggle('hidden', !isAdmin);
+  // shipping-admin-section: admin/super_admin 都能查看，super_admin 才能修改
   const shipAdmin = document.getElementById('shipping-admin-section');
   if (shipAdmin) shipAdmin.classList.toggle('hidden', !isAdmin);
+  document.querySelectorAll('.super-admin-only').forEach(el => {
+    el.classList.toggle('hidden', !isSuper);
+  });
   document.getElementById('export-orders-dropdown').querySelector('button').classList.toggle('hidden', !isSuper);
   document.getElementById('export-orders-dropdown').querySelector('button').classList.toggle('inline-flex', isSuper);
   document.getElementById('export-shipping-dropdown').querySelector('button').classList.toggle('hidden', !(isSuper || isAdmin));
@@ -3307,11 +3311,10 @@ function renderWeightProducts() {
       <td class="px-3 py-2.5 text-right">${p.net_weight}g</td>
       <td class="px-3 py-2.5 text-right">${p.gross_weight ? p.gross_weight + 'g' : '<span class="text-gray-300">—</span>'}</td>
       <td class="px-3 py-2.5 text-right text-xs text-gray-500">${capacityStr}</td>
-      <td class="px-3 py-2.5 text-center">
-        <button onclick="editWeightProduct('${p.id}')" class="text-blue-500 hover:text-blue-700 text-xs mr-2">编辑</button>
-        <button onclick="deleteWeightProduct('${p.id}')" class="text-red-500 hover:text-red-700 text-xs">删除</button>
-      </td>
-    </tr>`;
+  <td class="px-3 py-2.5 text-center">
+  ${currentRole === 'super_admin' ? `<button onclick="editWeightProduct('${p.id}')" class="text-blue-500 hover:text-blue-700 text-xs mr-2">编辑</button><button onclick="deleteWeightProduct('${p.id}')" class="text-red-500 hover:text-red-700 text-xs">删除</button>` : '<span class="text-gray-300 text-xs">—</span>'}
+  </td>
+  </tr>`;
   }).join('');
 }
 
@@ -3684,10 +3687,9 @@ function renderShippingTemplates() {
     <td class="px-3 py-2.5 text-right">${sym}${t.first_price.toFixed(2)}</td>
     <td class="px-3 py-2.5 text-right">${t.add_weight || t.add_unit_qty || 0}g</td>
     <td class="px-3 py-2.5 text-right">${sym}${t.add_price.toFixed(2)}</td>
-    <td class="px-3 py-2.5 text-center">
-      <button onclick="editShippingTemplate('${t.id}')" class="text-blue-500 hover:text-blue-700 text-xs mr-2">编辑</button>
-      <button onclick="deleteShippingTemplate('${t.id}')" class="text-red-500 hover:text-red-700 text-xs">删除</button>
-    </td>
+  <td class="px-3 py-2.5 text-center">
+  ${currentRole === 'super_admin' ? `<button onclick="editShippingTemplate('${t.id}')" class="text-blue-500 hover:text-blue-700 text-xs mr-2">编辑</button><button onclick="deleteShippingTemplate('${t.id}')" class="text-red-500 hover:text-red-700 text-xs">删除</button>` : '<span class="text-gray-300 text-xs">—</span>'}
+  </td>
   </tr>`;
   }).join('');
 }

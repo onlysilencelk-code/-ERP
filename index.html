@@ -291,6 +291,7 @@ html.dark .hover\:bg-gray-50:hover{background:#2a2a40 !important}
         <div class="flex gap-2 mt-2 flex-wrap">
           <button onclick="copyQuoteResult()" class="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">复制结果</button>
           <button onclick="resetQuote()" class="text-xs px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-red-500">重置</button>
+          <button onclick="syncPriceFromProducts()" class="text-xs px-3 py-1.5 rounded-lg border border-amber-300 hover:bg-amber-50 transition-colors text-amber-600">🔄 同步库存价格</button>
           <div class="relative inline-block" id="currency-dropdown-wrap">
             <button onclick="toggleCurrencyDropdown()" class="text-xs px-3 py-1.5 rounded-lg border border-blue-300 hover:bg-blue-50 transition-colors text-blue-600">💱 汇率换算</button>
             <div id="currency-dropdown" class="hidden absolute left-0 top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 min-w-[100px]">
@@ -534,6 +535,7 @@ html.dark .hover\:bg-gray-50:hover{background:#2a2a40 !important}
     <div class="grid grid-cols-2 gap-3"><div><label class="block text-xs text-gray-500 mb-1">当前库存 *</label><input id="product-stock" type="number" min="0" placeholder="0" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"/></div>
       <div><label class="block text-xs text-gray-500 mb-1">预警阈值 *</label><input id="product-alert" type="number" min="0" placeholder="10" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"/></div></div>
     <div><label class="block text-xs text-gray-500 mb-1">单位</label><input id="product-unit" type="text" placeholder="个" value="个" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"/></div>
+    <div><label class="block text-xs text-gray-500 mb-1">单价 (USD)</label><input id="product-price" type="number" min="0" step="0.01" placeholder="0" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"/></div>
     <div class="flex gap-3 pt-2"><button onclick="closeModal('modal-product')" class="flex-1 btn-touch py-2.5 rounded-xl border border-gray-200 text-sm text-gray-500">取消</button><button onclick="saveProduct()" id="btn-save-product" class="flex-1 btn-touch py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium">保存</button></div>
   </div></div></div>
 
@@ -674,7 +676,7 @@ html.dark .hover\:bg-gray-50:hover{background:#2a2a40 !important}
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script async src="https://lf-scm-cn.feishucdn.com/lark/op/h5-js-sdk-1.5.44.js"></script>
 <script async src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script defer src="app.js?v=20260605d"></script>
+<script defer src="app.js?v=20260605e"></script>
 
 <!-- 批量导入产品弹窗 -->
 <div id="modal-batch-product" class="fixed inset-0 hidden items-center justify-center p-4 bg-black/30" style="z-index:60">

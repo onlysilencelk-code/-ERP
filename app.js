@@ -1,4 +1,4 @@
-// app.js - 库存订单管理系统
+﻿// app.js - 库存订单管理系统
 
 // ============ 模糊匹配产品 ============
 // 常见别名/缩写映射（key 为用户可能输入的简写，value 为目标关键词）
@@ -4510,23 +4510,30 @@ window.addEventListener('DOMContentLoaded', init);
 
 // ============ 价格同步到报价助手 ============
 async function syncPriceFromProducts() {
+  // 飞书环境无法 F12，自动显示调试面板
+  const dp = document.getElementById('debug-panel');
+  if (dp) dp.style.display = 'block';
+  const dbg = document.getElementById('debug-log');
+  if (dbg) dbg.innerHTML = ''; // 清空旧日志
+  debugLog('===== 开始同步库存价格 =====', 'info');
   // 先强制重载库存数据，确保拿到最新价格
   await loadProducts();
-  if (!allProducts || allProducts.length === 0) { showToast('库存系统暂无产品', 'warning'); return; }
+  if (!allProducts || allProducts.length === 0) { showToast('库存系统暂无产品', 'warning'); debugLog('库存系统暂无产品', 'error'); return; }
   let updated = 0, matchedCount = 0;
+  debugLog(`库存产品数量: ${allProducts.length}`, 'info');
   allProducts.forEach(p => {
     const price = parseFloat(p.price);
     if (!p.name || Number.isNaN(price)) { console.log('[sync skip]', p.name, 'price invalid:', p.price); return; }
     let matched = null;
-    // 1) 简称(short_name) 匹配 QUOTE_PRODUCTS 的 code
+    // 1) 简称(short_name) 匹配 QUOTE_PRODUCTS 的 code（放宽：不要求 name 完全匹配）
     if (p.short_name) {
-      matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.code) === normalizeStr(p.short_name) && normalizeStr(qp.name) === normalizeStr(p.name));
-      if (matched) console.log('[sync match1]', p.name, p.short_name, '->', matched.code, matched.price, '=>', price);
+      matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.code) === normalizeStr(p.short_name));
+      if (matched) { console.log('[sync match1]', p.name, p.short_name, '->', matched.code, matched.price, '=>', price); debugLog(`匹配①: ${p.name}(${p.short_name}) → ${matched.code}`, 'ok'); }
     }
-    // 2) sku 匹配 QUOTE_PRODUCTS 的 code
+    // 2) sku 匹配 QUOTE_PRODUCTS 的 code（放宽：不要求 name 完全匹配）
     if (!matched && p.sku) {
-      matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.code) === normalizeStr(p.sku) && normalizeStr(qp.name) === normalizeStr(p.name));
-      if (matched) console.log('[sync match2]', p.name, p.sku, '->', matched.code, matched.price, '=>', price);
+      matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.code) === normalizeStr(p.sku));
+      if (matched) { console.log('[sync match2]', p.name, p.sku, '->', matched.code, matched.price, '=>', price); debugLog(`匹配②: ${p.name}(${p.sku}) → ${matched.code}`, 'ok'); }
     }
     // 3) 规格数字提取匹配
     if (!matched && p.sku) {
@@ -4562,6 +4569,8 @@ async function syncPriceFromProducts() {
     const input = document.getElementById('quote-input');
     if (input && input.value.trim()) parseQuoteInput();
   }
+  debugLog(`同步完成：匹配 ${matchedCount} 条，更新 ${updated} 条`, updated > 0 ? 'ok' : 'warn');
+  debugLog('===== 同步结束 =====', 'info');
   showToast(`同步完成：匹配 ${matchedCount} 条，更新 ${updated} 条`, updated > 0 ? 'success' : 'warning');
 }
 

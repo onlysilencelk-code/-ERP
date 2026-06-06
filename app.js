@@ -1,4 +1,4 @@
-﻿// app.js - 库存订单管理系统
+// app.js - 库存订单管理系统
 
 // ============ 模糊匹配产品 ============
 // 常见别名/缩写映射（key 为用户可能输入的简写，value 为目标关键词）
@@ -73,10 +73,7 @@ async function getExchangeRates() {
         AUD: data.rates.AUD,
         CAD: data.rates.CAD,
         CNY: data.rates.CNY,
-        GBP: data.rates.GBP,
-        COP: data.rates.COP,
-        MXN: data.rates.MXN,
-        PHP: data.rates.PHP
+        GBP: data.rates.GBP
       };
       _exchangeRatesExpiry = now + 30 * 60 * 1000;
       console.log('汇率已更新:', _exchangeRates);
@@ -85,7 +82,7 @@ async function getExchangeRates() {
   } catch (e) {
     console.warn('汇率获取失败，使用默认值', e);
   }
-  return _exchangeRates || { EUR: 0.92, AUD: 1.53, CAD: 1.36, GBP: 0.79, COP: 4150, MXN: 17.5, PHP: 56 };
+  return _exchangeRates || { EUR: 0.92, AUD: 1.53, CAD: 1.36, GBP: 0.79, CNY: 7.25 };
 }
 
 // 更新结算货币汇率显示
@@ -397,9 +394,9 @@ function fuzzyProductSearch(keyword) {
 
 
 // ============ 配置 ============
-const SUPABASE_URL = 'https://kqntsjvnlpuzniownrse.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxbnRzanZubHB1em5pb3ducnNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2NDY4NjYsImV4cCI6MjA5NjIyMjg2Nn0.o01n11WmqavOt_AEbtg9JCD4ULFXWE5-gJbrUa1IYvo';
-const FEISHU_APP_ID = 'cli_aaa81eb242f81be5';
+const SUPABASE_URL = 'https://pvrfqnffygusujsnxsct.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2cmZxbmZmeWd1c3Vqc254c2N0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc5MTI3ODYsImV4cCI6MjA5MzQ4ODc4Nn0.BraQWWOse2ikRGb02_PEgqV3b0Umdch9ugMqoBe7jio';
+const FEISHU_APP_ID = 'cli_a9726837c7789cc5';
 
 // ============ 全局状态 ============
 let sb, currentUser = null, currentRole = 'employee', feishuUid = '';
@@ -409,6 +406,13 @@ let currentProfileId = '';  // 当前用户的 profile UUID，供订单权限过
 let currentPage = 'dashboard', pageRefreshTimers = {}, editingOrderId = null, orderItemCounter = 0;
 let allDistributionRelations = []; // 分销关系缓存
 let originalStock = 0;  // 编辑产品时记录原始库存，用于写变动日志
+
+// ============ 价格体系 ============
+let allPriceSchemes = [];           // 所有体系 [{id, name, description, is_default}]
+let activePriceScheme = null;       // 当前激活体系 {id, name, ...}
+let activeSchemePrices = {};        // {product_code: price} 当前体系价格映射
+let priceSchemeLoaded = false;
+let editingSchemeId = null;         // 价格体系管理页面编辑中的体系 id
 
 // ============ 初始化 ============
 async function init() {
@@ -442,7 +446,6 @@ async function init() {
       }
       hideLoading();
       applyRole();
-      restoreQuotePrices(); // 恢复已同步的报价价格
       // 预加载运费模板和产品重量数据（避免首次新增订单时运费识别失败）
       try { await loadShippingTemplates(); } catch (e) { console.warn('预加载运费模板失败', e); }
       try { await loadWeightProducts(); } catch (e) { console.warn('预加载产品重量失败', e); }
@@ -526,7 +529,7 @@ async function feishuLogin() {
   }
   debugLog('准备请求 Edge Function, code长度=' + code.length, 'info');
   try {
-    let resp = await fetch('https://kqntsjvnlpuzniownrse.functions.supabase.co/feishu-login', {
+    let resp = await fetch('https://pvrfqnffygusujsnxsct.functions.supabase.co/feishu-login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, app_id: FEISHU_APP_ID })
     });
@@ -545,7 +548,7 @@ async function feishuLogin() {
           tt.requestAuthCode({ appId: FEISHU_APP_ID, success: (res) => resolve(res.code), fail: (err) => reject(new Error('重试 requestAuthCode 失败')) });
         });
         debugLog('重试 code 获取成功, 长度=' + code.length, 'ok');
-        resp = await fetch('https://kqntsjvnlpuzniownrse.functions.supabase.co/feishu-login', {
+        resp = await fetch('https://pvrfqnffygusujsnxsct.functions.supabase.co/feishu-login', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code, app_id: FEISHU_APP_ID })
         });
@@ -588,7 +591,6 @@ async function feishuLogin() {
     // 不再在前端调用 upsert_profile，Edge Function 已处理名字保护逻辑
     hideLoading();
     applyRole();
-    restoreQuotePrices(); // 恢复已同步的报价价格
     switchPage('dashboard');
     Promise.all([loadProfiles(), loadProducts(), loadOrders()]).then(() => refreshCurrentPage());
   } catch (err) { console.error(err); throw err; }
@@ -608,12 +610,8 @@ function applyRole() {
   const mobileLogs = document.getElementById('mobile-nav-logs');
   if (mobileLogs) mobileLogs.classList.toggle('hidden', !isAdmin);
   document.getElementById('inventory-admin-btns').classList.toggle('hidden', !isAdmin);
-  // shipping-admin-section: admin/super_admin 都能查看，super_admin 才能修改
   const shipAdmin = document.getElementById('shipping-admin-section');
   if (shipAdmin) shipAdmin.classList.toggle('hidden', !isAdmin);
-  document.querySelectorAll('.super-admin-only').forEach(el => {
-    el.classList.toggle('hidden', !isSuper);
-  });
   document.getElementById('export-orders-dropdown').querySelector('button').classList.toggle('hidden', !isSuper);
   document.getElementById('export-orders-dropdown').querySelector('button').classList.toggle('inline-flex', isSuper);
   document.getElementById('export-shipping-dropdown').querySelector('button').classList.toggle('hidden', !(isSuper || isAdmin));
@@ -667,7 +665,7 @@ function switchPage(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const pe = document.getElementById('page-' + page);
   if (pe) pe.classList.add('active');
-  const titles = { dashboard: '仪表盘', inventory: '库存管理', orders: '订单管理', logs: '变动日志', users: '用户管理', quote: '报价助手', shipping: '运费助手', distribution: '分销管理' };
+  const titles = { dashboard: '仪表盘', inventory: '库存管理', orders: '订单管理', logs: '变动日志', users: '用户管理', quote: '报价助手', shipping: '运费助手', distribution: '分销管理', 'price-schemes': '价格体系' };
   const te = document.getElementById('page-title');
   if (te) te.textContent = titles[page] || '';
   clearAllRefreshTimers();
@@ -676,9 +674,10 @@ function switchPage(page) {
   else if (page === 'orders') { startPageRefresh(page, () => Promise.all([loadOrders(), loadWeightProducts()]).then(() => renderOrders())); }
   else if (page === 'logs') { startPageRefresh(page, () => loadInventoryLogs().then(renderLogs)); }
   else if (page === 'users' && currentRole === 'super_admin') { renderUsers(); }
-  else if (page === 'quote') { renderQuotePage(); }
+  else if (page === 'quote') { loadPriceSchemes().then(renderQuotePage); }
   else if (page === 'shipping') { loadWeightProducts().then(() => loadShippingTemplates().then(renderShippingPage)); }
   else if (page === 'distribution') { loadDistributionRelations().then(() => { renderDistributionRelations(); loadDistributionStats(); }); }
+  else if (page === 'price-schemes') { renderPriceSchemePage(); }
 }
 function clearAllRefreshTimers() { Object.values(pageRefreshTimers).forEach(t => clearInterval(t)); pageRefreshTimers = {}; }
 function startPageRefresh(page, fn) { clearAllRefreshTimers(); fn(); pageRefreshTimers[page] = setInterval(fn, 30000); }
@@ -810,7 +809,7 @@ function renderInventory() {
   const isAdmin = ['super_admin', 'admin'].includes(currentRole);
   let head = '<tr>';
   if (isAdmin) head += '<th class="px-3 py-3 text-left"><input type="checkbox" id="inv-select-all" onchange="toggleInvSelectAll(this)" class="rounded"/></th>';
-  ['产品名称', '简称', '规格', '当前库存', '预警阈值', '单位', '单价', '更新时间', isAdmin ? '操作' : ''].forEach(h => { head += `<th class="px-4 py-3 text-left font-medium">${h}</th>`; });
+  ['产品名称', '简称', '规格', '当前库存', '预警阈值', '单位', '更新时间', isAdmin ? '操作' : ''].forEach(h => { head += `<th class="px-4 py-3 text-left font-medium">${h}</th>`; });
   head += '</tr>';
   document.getElementById('inventory-head').innerHTML = head;
   if (filtered.length === 0) { document.getElementById('inventory-body').innerHTML = ''; document.getElementById('inventory-empty').classList.remove('hidden'); return; }
@@ -820,9 +819,23 @@ function renderInventory() {
     const chk = checkedIds.has(p.id) ? ' checked' : '';
     const chkHtml = isAdmin ? `<td class="px-3 py-3"><input type="checkbox" class="inv-chk rounded" value="${p.id}"${chk} onchange="updateBatchStockBtn()" /></td>` : '';
     const btnHtml = isAdmin ? `<button onclick="openRestockModal('${p.id}')" class="text-xs text-green-600 hover:underline mr-2">补货</button><button onclick="openProductModal('${p.id}')" class="text-xs text-blue-500 hover:underline mr-2">编辑</button><button onclick="deleteProduct('${p.id}')" class="text-xs text-red-500 hover:underline">删除</button>` : '';
-    return `<tr class="${isLow ? 'stock-warn' : ''} border-b border-gray-50 hover:bg-gray-50">${chkHtml}<td class="px-4 py-3 font-medium">${esc(p.name)}</td><td class="px-4 py-3 text-gray-500">${esc(p.short_name || '-')}</td><td class="px-4 py-3 text-gray-400">${esc(p.sku || '-')}</td><td class="px-4 py-3 ${isLow ? 'text-red-600 font-bold' : 'text-green-600'}">${p.current_stock} ${esc(p.unit || '个')}</td><td class="px-4 py-3 text-xs text-gray-400">${p.min_stock_alert}</td><td class="px-4 py-3">${esc(p.unit || '个')}</td><td class="px-4 py-3 text-sm font-medium text-amber-600">$${p.price || 0}</td><td class="px-4 py-3 text-xs text-gray-400">${(p.updated_at || p.created_at || '').slice(0, 10)}</td><td class="px-4 py-3">${btnHtml}</td></tr>`;
+    return `<tr class="${isLow ? 'stock-warn' : ''} border-b border-gray-50 hover:bg-gray-50">${chkHtml}<td class="px-4 py-3 font-medium">${esc(p.name)}</td><td class="px-4 py-3 text-gray-500">${esc(p.short_name || '-')}</td><td class="px-4 py-3 text-gray-400">${esc(p.sku || '-')}</td><td class="px-4 py-3 ${isLow ? 'text-red-600 font-bold' : 'text-green-600'}">${p.current_stock} ${esc(p.unit || '个')}</td><td class="px-4 py-3 text-xs text-gray-400">${p.min_stock_alert}</td><td class="px-4 py-3">${esc(p.unit || '个')}</td><td class="px-4 py-3 text-xs text-gray-400">${(p.updated_at || p.created_at || '').slice(0, 10)}</td><td class="px-4 py-3">${btnHtml}</td></tr>`;
   }).join('');
   updateBatchStockBtn();
+}
+
+async function exportInventorySku() {
+  const kw = document.getElementById('inventory-search').value.trim().toLowerCase();
+  const filtered = kw ? fuzzyProductSearch(kw) : allProducts;
+  if (filtered.length === 0) { showToast('暂无产品可导出', 'warning'); return; }
+  const headers = ['产品名称', '简称', 'SKU', '当前库存', '预警阈值', '单位'];
+  const rows = filtered.map(p => [p.name || '', p.short_name || '', p.sku || '', p.current_stock, p.min_stock_alert, p.unit || '个']);
+  const BOM = '\uFEFF';
+  const esc = c => '"' + String(c).replace(/"/g, '""') + '"';
+  const csv = [headers.map(esc).join(','), ...rows.map(r => r.map(esc).join(','))].join('\n');
+  const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8' });
+  await downloadBlobPicker(blob, '产品SKU_' + new Date().toISOString().slice(0, 10) + '.csv');
+  showToast('已导出 ' + filtered.length + ' 条产品SKU', 'success');
 }
 
 function openProductModal(id) {
@@ -838,7 +851,6 @@ function openProductModal(id) {
       document.getElementById('product-stock').value = p.current_stock || 0;
       document.getElementById('product-alert').value = p.min_stock_alert || 10;
       document.getElementById('product-unit').value = p.unit || '个';
-      document.getElementById('product-price').value = p.price || 0;
     }
   } else {
     originalStock = 0;
@@ -848,7 +860,6 @@ function openProductModal(id) {
     document.getElementById('product-stock').value = 0;
     document.getElementById('product-alert').value = 10;
     document.getElementById('product-unit').value = '个';
-    document.getElementById('product-price').value = 0;
   }
   openModal('modal-product');
 }
@@ -861,7 +872,6 @@ async function saveProduct() {
   const stock = parseInt(document.getElementById('product-stock').value) || 0;
   const alertVal = parseInt(document.getElementById('product-alert').value) ?? 10;
   const unit = document.getElementById('product-unit').value.trim() || '个';
-  const price = parseFloat(document.getElementById('product-price').value) || 0;
   if (!name) { showToast('请填写产品名称', 'warning'); return; }
   //  复合唯一性预检：名称+简称+规格+单位 完全一致视为同一产品
   const conflict = allProducts.find(p =>
@@ -893,7 +903,7 @@ async function saveProduct() {
       if (logErr) console.warn('库存调整日志写入失败:', logErr.message);
     }
     // 保存产品（upsert_product 会覆盖库存值为 stock，与 adjust_inventory 调过的值一致）
-    const { data, error } = await sb.rpc('upsert_product', { p_id: id, p_name: name, p_short_name: shortName, p_sku: sku || null, p_stock: stock, p_alert: alertVal, p_unit: unit, p_feishu_user_id: feishuUid, p_price: price });
+    const { data, error } = await sb.rpc('upsert_product', { p_id: id, p_name: name, p_short_name: shortName, p_sku: sku || null, p_stock: stock, p_alert: alertVal, p_unit: unit, p_feishu_user_id: feishuUid });
     if (error) throw error;
     closeModal('modal-product');
     await Promise.all([loadProducts(), loadInventoryLogs()]);
@@ -1756,7 +1766,7 @@ async function handleBatchProductPaste() {
   const text = document.getElementById('batch-product-paste').value.trim();
   if (!text) { showToast('请先粘贴文本', 'warning'); return; }
   const lines = text.split('\n').map(l => l.trim()).filter(l => l);
-  const headerSet = new Set(['产品名称', '简称', '规格', '库存数量', '预警阈值', '单位', '价格', '产品', '库存', '预警', '单价']);
+  const headerSet = new Set(['产品名称', '简称', '规格', '库存数量', '预警阈值', '单位', '产品', '规格', '简称', '库存', '预警', '单位']);
   const errors = [];
   const products = [];
   lines.forEach((line, idx) => {
@@ -1770,8 +1780,7 @@ async function handleBatchProductPaste() {
       sku: parts[2] || '',
       stock: parseInt(parts[3]) || 0,
       alert: parseInt(parts[4]) || 10,
-      unit: parts[5] || '个',
-      price: parseFloat(parts[6]) || 0
+      unit: parts[5] || '个'
     });
   });
 
@@ -1810,9 +1819,9 @@ async function handleBatchProductPaste() {
   // 显示预览
   const head = document.getElementById('batch-product-head');
   const body = document.getElementById('batch-product-body');
-  head.innerHTML = '<tr>' + ['产品名称','简称','规格','库存','预警阈值','单位','价格'].map(h => '<th class="px-2 py-1 text-left">' + h + '</th>').join('') + '</tr>';
+  head.innerHTML = '<tr>' + ['产品名称','简称','规格','库存','预警阈值','单位'].map(h => '<th class="px-2 py-1 text-left">' + h + '</th>').join('') + '</tr>';
   body.innerHTML = products.map(p => '<tr class="border-b border-gray-100">' +
-    [p.name, p.short_name, p.sku, p.stock, p.alert, p.unit, p.price].map(v => '<td class="px-2 py-1">' + esc(v) + '</td>').join('') + '</tr>').join('');
+    [p.name, p.short_name, p.sku, p.stock, p.alert, p.unit].map(v => '<td class="px-2 py-1">' + esc(v) + '</td>').join('') + '</tr>').join('');
   document.getElementById('batch-product-count').textContent = '共 ' + products.length + ' 条，点击"确认导入"写入数据库';
   document.getElementById('batch-product-errors').textContent = errors.length ? errors.join('; ') : '';
   document.getElementById('batch-product-review').classList.remove('hidden');
@@ -1853,8 +1862,7 @@ async function saveBatchProducts(products) {
           p_stock: existing.current_stock || 0,
           p_alert: p.alert || existing.min_stock_alert || 10,
           p_unit: p.unit || existing.unit || '个',
-          p_feishu_user_id: feishuUid,
-          p_price: p.price || existing.price || 0
+          p_feishu_user_id: feishuUid
         });
         if (error) throw error;
         // 库存有变动时写日志+调库存
@@ -1879,8 +1887,7 @@ async function saveBatchProducts(products) {
           p_stock: p.stock,
           p_alert: p.alert || 10,
           p_unit: p.unit || '个',
-          p_feishu_user_id: feishuUid,
-          p_price: p.price || 0
+          p_feishu_user_id: feishuUid
         });
         if (error) throw error;
       }
@@ -2560,10 +2567,10 @@ async function appendCurrency(currency) {
   const rates = await getExchangeRates();
   const rate = rates[currency];
   if (!rate) { showToast('汇率获取失败', 'error'); return; }
-  const symbol = { EUR: '€', AUD: 'A$', CAD: 'C$', GBP: '£', COP: 'COL$', MXN: 'MX$', PHP: '₱' }[currency];
-  // 先清除之前的所有换算后缀（匹配 =€, =A$, =C$, =£, =COL$, =MX$, =₱ 开头的数字）
+  const symbol = { EUR: '€', AUD: 'A$', CAD: 'C$', GBP: '£' }[currency];
+  // 先清除之前的所有换算后缀（匹配 =€, =A$, =C$ 开头的数字）
   el.querySelectorAll('div.text-sm.font-mono').forEach(div => {
-    div.textContent = div.textContent.replace(/=(?:€|A\$|C\$|£|COL\$|MX\$|₱)[\d\.]+/g, '');
+    div.textContent = div.textContent.replace(/=(?:€|A\$|C\$|£)[\d\.]+/g, '');
   });
   // 再追加新币种换算
   el.querySelectorAll('div.text-sm.font-mono').forEach(div => {
@@ -2609,7 +2616,7 @@ function updateSummary(el, currency, rate) {
   if (count === 0) return;
   const existing = el.querySelector('.quote-summary');
   if (existing) existing.remove();
-  const labels = { USD: ['USD', ''], EUR: ['€', 'EUR'], AUD: ['A$', 'AUD'], CAD: ['C$', 'CAD'], GBP: ['£', 'GBP'], COP: ['COL$', 'COP'], MXN: ['MX$', 'MXN'], PHP: ['₱', 'PHP'] };
+  const labels = { USD: ['USD', ''], EUR: ['€', 'EUR'], AUD: ['A$', 'AUD'], CAD: ['C$', 'CAD'], GBP: ['£', 'GBP'] };
   const [sym, code] = labels[currency] || ['USD', ''];
   const displayTotal = currency === 'USD' ? totalUSD : (totalUSD * rate).toFixed(2);
   const displayLabel = currency === 'USD' ? 'USD' : `${code}`;
@@ -2635,13 +2642,22 @@ function showTotalSummary() {
   updateSummary(el, 'USD', 1);
 }
 
-// 报价产品行格式化（统一处理 alias 显示）
+// 获取产品在当前价格体系下的价格
+function getActivePrice(p) {
+  if (activePriceScheme && activeSchemePrices[p.code] != null) {
+    return activeSchemePrices[p.code];
+  }
+  return p.price; // 回退到内置价格
+}
+
+// 报价产品行格式化（统一处理 alias 显示，支持多价格体系）
 function formatQuoteProduct(p, qty) {
   const codeDisplay = p.alias ? `${p.code}（${p.alias}）` : p.code;
+  const unitPrice = getActivePrice(p);
   if (qty > 0) {
-    return `${p.name}：${codeDisplay} ${p.spec} USD${p.price} x${qty} = USD${p.price * qty}`;
+    return `${p.name}：${codeDisplay} ${p.spec} USD${unitPrice} x${qty} = USD${+(unitPrice * qty).toFixed(2)}`;
   }
-  return `${p.name}：${codeDisplay} ${p.spec} USD${p.price}`;
+  return `${p.name}：${codeDisplay} ${p.spec} USD${unitPrice}`;
 }
 
 // ============ 输入解析 ============
@@ -3120,13 +3136,322 @@ function downloadBlob(blob, filename) {
   a.click(); URL.revokeObjectURL(url);
 }
 
+// 支持文件选择对话框的下载（Chrome/Edge showSaveFilePicker）
+async function downloadBlobPicker(blob, defaultName) {
+  // Chrome / Edge 支持 showSaveFilePicker
+  if (typeof window.showSaveFilePicker === 'function') {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: defaultName,
+        types: [{ description: 'CSV 文件', accept: { 'text/csv': ['.csv'] } }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    } catch (e) {
+      // 用户取消或失败，降级为普通下载
+      if (e.name === 'AbortError') return;
+    }
+  }
+  // 降级：普通浏览器下载
+  downloadBlob(blob, defaultName);
+}
+
+// ============ 价格体系管理 ============
+
+async function loadPriceSchemes() {
+  if (priceSchemeLoaded) return;
+  try {
+    const { data, error } = await sb.from('price_schemes').select('*').order('created_at');
+    if (error) throw error;
+    allPriceSchemes = data || [];
+    priceSchemeLoaded = true;
+    // 恢复上次选择的体系
+    const savedId = localStorage.getItem('oi_active_scheme_id');
+    const found = savedId ? allPriceSchemes.find(s => s.id === savedId) : null;
+    const def = allPriceSchemes.find(s => s.is_default) || allPriceSchemes[0] || null;
+    await switchPriceScheme(found ? found.id : (def ? def.id : null));
+  } catch(e) {
+    console.warn('loadPriceSchemes error', e);
+    allPriceSchemes = [];
+  }
+}
+
+async function switchPriceScheme(schemeId) {
+  if (!schemeId) {
+    activePriceScheme = null;
+    activeSchemePrices = {};
+    renderSchemeSelector();
+    return;
+  }
+  try {
+    const { data, error } = await sb.from('price_scheme_items')
+      .select('product_code,price')
+      .eq('scheme_id', schemeId);
+    if (error) throw error;
+    const scheme = allPriceSchemes.find(s => s.id === schemeId);
+    activePriceScheme = scheme || null;
+    activeSchemePrices = {};
+    (data || []).forEach(row => { activeSchemePrices[row.product_code] = parseFloat(row.price); });
+    localStorage.setItem('oi_active_scheme_id', schemeId);
+    renderSchemeSelector();
+  } catch(e) {
+    console.warn('switchPriceScheme error', e);
+    activePriceScheme = null;
+    activeSchemePrices = {};
+    renderSchemeSelector();
+  }
+}
+
+function renderSchemeSelector() {
+  const el = document.getElementById('scheme-selector');
+  if (!el) return;
+  el.innerHTML = '';
+  // "默认"选项（使用内置价格）
+  const defOpt = document.createElement('option');
+  defOpt.value = '';
+  defOpt.textContent = '— 内置价格 —';
+  el.appendChild(defOpt);
+  allPriceSchemes.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.id;
+    opt.textContent = s.name;
+    el.appendChild(opt);
+  });
+  el.value = activePriceScheme ? activePriceScheme.id : '';
+}
+
+async function onSchemeChange() {
+  const el = document.getElementById('scheme-selector');
+  if (!el) return;
+  const id = el.value;
+  await switchPriceScheme(id || null);
+  // 刷新报价结果
+  const inputEl = document.getElementById('quote-input');
+  if (inputEl && inputEl.value.trim()) handleQuoteSearch();
+}
+
+// ========== 价格体系管理页 ==========
+
+async function renderPriceSchemePage() {
+  priceSchemeLoaded = false; // 强制刷新
+  await loadPriceSchemes();
+  renderSchemeList();
+}
+
+function renderSchemeList() {
+  const container = document.getElementById('price-scheme-list');
+  if (!container) return;
+  if (allPriceSchemes.length === 0) {
+    container.innerHTML = '<p class="text-sm text-gray-400 text-center py-8">暂无价格体系，点击「新建」创建</p>';
+    return;
+  }
+  container.innerHTML = allPriceSchemes.map(s => `
+    <div class="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 hover:border-blue-200 transition-colors">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2">
+          <span class="font-medium text-sm">${escHtml(s.name)}</span>
+          ${s.is_default ? '<span class="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded">默认</span>' : ''}
+        </div>
+        ${s.description ? `<p class="text-xs text-gray-400 mt-0.5 truncate">${escHtml(s.description)}</p>` : ''}
+      </div>
+      <div class="flex gap-1.5 flex-shrink-0">
+        <button onclick="openSchemeItemModal('${s.id}','${escHtml(s.name)}')" class="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">定价</button>
+        <button onclick="openSchemeEditModal('${s.id}')" class="text-xs px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">编辑</button>
+        <button onclick="confirmDeleteScheme('${s.id}','${escHtml(s.name)}')" class="text-xs px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-500 transition-colors">删除</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openSchemeEditModal(id) {
+  editingSchemeId = id || null;
+  const scheme = id ? allPriceSchemes.find(s => s.id === id) : null;
+  document.getElementById('scheme-modal-title').textContent = id ? '编辑价格体系' : '新建价格体系';
+  document.getElementById('scheme-name-input').value = scheme ? scheme.name : '';
+  document.getElementById('scheme-desc-input').value = scheme ? (scheme.description || '') : '';
+  document.getElementById('scheme-default-input').checked = scheme ? scheme.is_default : false;
+  document.getElementById('scheme-edit-modal').classList.remove('hidden');
+}
+
+function closeSchemeEditModal() {
+  document.getElementById('scheme-edit-modal').classList.add('hidden');
+  editingSchemeId = null;
+}
+
+async function saveScheme() {
+  const name = document.getElementById('scheme-name-input').value.trim();
+  const desc = document.getElementById('scheme-desc-input').value.trim();
+  const isDef = document.getElementById('scheme-default-input').checked;
+  if (!name) { showToast('请输入体系名称', 'warning'); return; }
+
+  try {
+    const { data, error } = await sb.rpc('upsert_price_scheme', {
+      p_id: editingSchemeId || null,
+      p_name: name,
+      p_description: desc,
+      p_is_default: isDef
+    });
+    if (error) throw error;
+    showToast(editingSchemeId ? '已更新' : '已创建', 'success');
+    closeSchemeEditModal();
+    priceSchemeLoaded = false;
+    await renderPriceSchemePage();
+  } catch(e) {
+    showToast('保存失败：' + e.message, 'error');
+  }
+}
+
+async function confirmDeleteScheme(id, name) {
+  if (!confirm(`确定删除价格体系「${name}」？该体系下的所有定价将被同步删除，操作不可撤销。`)) return;
+  try {
+    const { error } = await sb.rpc('delete_price_scheme', { p_id: id });
+    if (error) throw error;
+    showToast('已删除', 'success');
+    if (activePriceScheme && activePriceScheme.id === id) {
+      activePriceScheme = null; activeSchemePrices = {};
+      localStorage.removeItem('oi_active_scheme_id');
+    }
+    priceSchemeLoaded = false;
+    await renderPriceSchemePage();
+  } catch(e) {
+    showToast('删除失败：' + e.message, 'error');
+  }
+}
+
+// ===== 价格明细弹窗（定价管理）=====
+let schemeItemModalId = null;
+let schemeItemsCache = {};   // schemeId -> [{product_code, price}]
+let schemeItemFilter = '';   // 搜索关键词
+
+async function openSchemeItemModal(schemeId, schemeName) {
+  schemeItemModalId = schemeId;
+  document.getElementById('scheme-item-modal-title').textContent = `${schemeName} — 产品定价`;
+  document.getElementById('scheme-item-modal').classList.remove('hidden');
+  document.getElementById('scheme-item-filter').value = '';
+  schemeItemFilter = '';
+  await loadSchemeItems(schemeId);
+}
+
+function closeSchemeItemModal() {
+  document.getElementById('scheme-item-modal').classList.add('hidden');
+  schemeItemModalId = null;
+}
+
+async function loadSchemeItems(schemeId) {
+  try {
+    const { data, error } = await sb.from('price_scheme_items')
+      .select('product_code,price')
+      .eq('scheme_id', schemeId);
+    if (error) throw error;
+    const map = {};
+    (data || []).forEach(r => { map[r.product_code] = parseFloat(r.price); });
+    schemeItemsCache[schemeId] = map;
+    renderSchemeItemTable();
+  } catch(e) {
+    showToast('加载定价失败：' + e.message, 'error');
+  }
+}
+
+function renderSchemeItemTable() {
+  const tbody = document.getElementById('scheme-item-tbody');
+  if (!tbody) return;
+  const priceMap = schemeItemsCache[schemeItemModalId] || {};
+  const kw = schemeItemFilter.toLowerCase();
+  const filtered = QUOTE_PRODUCTS.filter(p =>
+    !kw || p.name.toLowerCase().includes(kw) || p.code.toLowerCase().includes(kw)
+  );
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-xs text-gray-400">无匹配产品</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map((p, i) => {
+    const cur = priceMap[p.code];
+    const hasCustom = cur != null;
+    const displayPrice = hasCustom ? cur : p.price;
+    return `<tr class="border-b border-gray-50 hover:bg-gray-50">
+      <td class="py-2 px-3 text-xs text-gray-500">${escHtml(p.code)}</td>
+      <td class="py-2 px-3 text-xs">${escHtml(p.name)} <span class="text-gray-400">${escHtml(p.spec)}</span></td>
+      <td class="py-2 px-2 text-xs text-gray-400">${p.price}</td>
+      <td class="py-2 px-2">
+        <input type="number" step="0.01" min="0" value="${displayPrice}"
+          data-code="${escHtml(p.code)}"
+          class="scheme-price-input w-20 px-2 py-1 text-xs rounded-lg border ${hasCustom ? 'border-blue-300 bg-blue-50' : 'border-gray-200'} focus:outline-none focus:ring-1 focus:ring-blue-400"
+          oninput="onSchemePriceInput(this)"
+        />
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function filterSchemeItems() {
+  schemeItemFilter = document.getElementById('scheme-item-filter').value.trim();
+  renderSchemeItemTable();
+}
+
+function onSchemePriceInput(el) {
+  const code = el.dataset.code;
+  const val = parseFloat(el.value);
+  const priceMap = schemeItemsCache[schemeItemModalId] || {};
+  if (!isNaN(val) && val >= 0) {
+    el.classList.add('border-blue-300', 'bg-blue-50');
+    el.classList.remove('border-gray-200');
+    priceMap[code] = val;
+  }
+  schemeItemsCache[schemeItemModalId] = priceMap;
+}
+
+async function saveSchemeItems() {
+  const priceMap = schemeItemsCache[schemeItemModalId] || {};
+  const entries = Object.entries(priceMap);
+  if (entries.length === 0) { showToast('没有定价数据', 'warning'); return; }
+  const btn = document.getElementById('save-scheme-items-btn');
+  btn.disabled = true; btn.textContent = '保存中...';
+  try {
+    // 批量 upsert via RPC
+    for (const [code, price] of entries) {
+      const { error } = await sb.rpc('upsert_price_scheme_item', {
+        p_scheme_id: schemeItemModalId,
+        p_product_code: code,
+        p_price: price
+      });
+      if (error) throw error;
+    }
+    showToast('定价已保存', 'success');
+    // 如果当前激活体系就是这个，刷新价格
+    if (activePriceScheme && activePriceScheme.id === schemeItemModalId) {
+      activeSchemePrices = { ...priceMap };
+    }
+  } catch(e) {
+    showToast('保存失败：' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '保存所有定价';
+  }
+}
+
+async function syncDefaultPrices() {
+  // 将 QUOTE_PRODUCTS 的内置价格一键批量写入当前打开的体系
+  if (!schemeItemModalId) return;
+  if (!confirm('将把 QUOTE_PRODUCTS 内置价格全部同步到本体系（不会删除已有自定义价格，仅补充/覆盖），确认？')) return;
+  const priceMap = schemeItemsCache[schemeItemModalId] || {};
+  QUOTE_PRODUCTS.forEach(p => { priceMap[p.code] = p.price; });
+  schemeItemsCache[schemeItemModalId] = priceMap;
+  renderSchemeItemTable();
+  showToast('已填入内置价格，点「保存所有定价」提交', 'info');
+}
+
+function escHtml(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 // ============ 运费助手 ============
 let shippingTemplates = [];
 let shippingTemplatesLoaded = false;
 const SHIP_TPL_KEY = 'oi_shipping_templates';
-const CURRENCY_SYMBOLS = { USD: '$', AUD: 'A$', CNY: '¥', EUR: '€', GBP: '£', COP: 'COL$', MXN: 'MX$', PHP: '₱' };
+const CURRENCY_SYMBOLS = { USD: '$', AUD: 'A$', CNY: '¥', EUR: '€', GBP: '£' };
 const PAYMENT_LABELS = { bank_transfer: '银行转账', paypal: 'PayPal', wise: 'Wise', crypto: '加密货币' };
-const CURRENCY_FULL = { USD: 'USD 美元', EUR: 'EUR 欧元', AUD: 'AUD 澳元', CAD: 'CAD 加元', GBP: 'GBP 英镑', COP: 'COP 哥伦比亚比索', MXN: 'MXN 墨西哥比索', PHP: 'PHP 菲律宾比索' };
+const CURRENCY_FULL = { USD: 'USD 美元', EUR: 'EUR 欧元', AUD: 'AUD 澳元', CAD: 'CAD 加元', GBP: 'GBP 英镑' };
 function curSym(c) { return CURRENCY_SYMBOLS[c] || c + ' '; }
 
 // ============ 结算货币 & 汇率 ============
@@ -3137,7 +3462,7 @@ let _cnyExchangeRate = 7.25; // 1 结算货币 = ? CNY（实时汇率，保存�
 
 function getCurrencyUsdRate(cur) {
   // 返回 1 cur = ? USD
-  const rates = { USD: 1, EUR: 1/0.92, AUD: 1/1.53, CAD: 1/1.36 };
+  const rates = { USD: 1, EUR: 1/0.92, AUD: 1/1.53, CAD: 1/1.36, GBP: 1/0.79 };
   return rates[cur] || 1;
 }
 
@@ -3311,10 +3636,11 @@ function renderWeightProducts() {
       <td class="px-3 py-2.5 text-right">${p.net_weight}g</td>
       <td class="px-3 py-2.5 text-right">${p.gross_weight ? p.gross_weight + 'g' : '<span class="text-gray-300">—</span>'}</td>
       <td class="px-3 py-2.5 text-right text-xs text-gray-500">${capacityStr}</td>
-  <td class="px-3 py-2.5 text-center">
-  ${currentRole === 'super_admin' ? `<button onclick="editWeightProduct('${p.id}')" class="text-blue-500 hover:text-blue-700 text-xs mr-2">编辑</button><button onclick="deleteWeightProduct('${p.id}')" class="text-red-500 hover:text-red-700 text-xs">删除</button>` : '<span class="text-gray-300 text-xs">—</span>'}
-  </td>
-  </tr>`;
+      <td class="px-3 py-2.5 text-center">
+        <button onclick="editWeightProduct('${p.id}')" class="text-blue-500 hover:text-blue-700 text-xs mr-2">编辑</button>
+        <button onclick="deleteWeightProduct('${p.id}')" class="text-red-500 hover:text-red-700 text-xs">删除</button>
+      </td>
+    </tr>`;
   }).join('');
 }
 
@@ -3687,9 +4013,10 @@ function renderShippingTemplates() {
     <td class="px-3 py-2.5 text-right">${sym}${t.first_price.toFixed(2)}</td>
     <td class="px-3 py-2.5 text-right">${t.add_weight || t.add_unit_qty || 0}g</td>
     <td class="px-3 py-2.5 text-right">${sym}${t.add_price.toFixed(2)}</td>
-  <td class="px-3 py-2.5 text-center">
-  ${currentRole === 'super_admin' ? `<button onclick="editShippingTemplate('${t.id}')" class="text-blue-500 hover:text-blue-700 text-xs mr-2">编辑</button><button onclick="deleteShippingTemplate('${t.id}')" class="text-red-500 hover:text-red-700 text-xs">删除</button>` : '<span class="text-gray-300 text-xs">—</span>'}
-  </td>
+    <td class="px-3 py-2.5 text-center">
+      <button onclick="editShippingTemplate('${t.id}')" class="text-blue-500 hover:text-blue-700 text-xs mr-2">编辑</button>
+      <button onclick="deleteShippingTemplate('${t.id}')" class="text-red-500 hover:text-red-700 text-xs">删除</button>
+    </td>
   </tr>`;
   }).join('');
 }
@@ -3896,9 +4223,7 @@ async function autoQuoteOrder() {
     if (!hit) { skipped++; continue; }
     const priceInput = document.getElementById(`item-price-${idx}`);
     if (priceInput) {
-      // 优先使用库存产品的 price，没有再用 QUOTE_PRODUCTS 的默认价
-      const stockPrice = parseFloat(product.price);
-      priceInput.value = (!Number.isNaN(stockPrice) && stockPrice > 0) ? stockPrice : hit.price;
+      priceInput.value = hit.price;
       filled++;
     }
   }
@@ -4146,7 +4471,7 @@ async function autoCalcShipping() {
 }
 
 function curSym(currency) {
-  return { USD: '$', EUR: '€', AUD: 'A$', CAD: 'C$', CNY: '¥', GBP: '£', COP: 'COL$', MXN: 'MX$', PHP: '₱' }[currency] || currency;
+  return { USD: '$', EUR: '€', AUD: 'A$', CAD: 'C$', CNY: '¥', GBP: '£' }[currency] || currency;
 }
 
 
@@ -4302,7 +4627,7 @@ async function appendShipCurrency(currency) {
   const rates = await getExchangeRates();
   const rate = rates[currency];
   if (!rate) { showToast('汇率获取失败', 'error'); return; }
-  const symbols = { EUR: '€', AUD: 'A$', CAD: 'C$', CNY: '¥', GBP: '£', COP: 'COL$', MXN: 'MX$', PHP: '₱' };
+  const symbols = { EUR: '€', AUD: 'A$', CAD: 'C$', CNY: '¥', GBP: '£' };
   const sym = symbols[currency] || '';
   // 将 lastShipTotal 从 lastShipCurrency 转换到 target currency
   let targetAmount;
@@ -4317,7 +4642,7 @@ async function appendShipCurrency(currency) {
   const detail = document.getElementById('ship-result-detail');
   detail.querySelectorAll('.ship-converted').forEach(el => el.remove());
   // 构建复制文本：运费=XXUSD=A$XX
-  const srcSymbol = { USD: '$', EUR: '€', AUD: 'A$', CAD: 'C$', CNY: '¥', GBP: '£', COP: 'COL$', MXN: 'MX$', PHP: '₱' }[lastShipCurrency] || '';
+  const srcSymbol = { USD: '$', EUR: '€', AUD: 'A$', CAD: 'C$', CNY: '¥', GBP: '£' }[lastShipCurrency] || '';
   const copyText = `运费=${srcSymbol}${lastShipTotal.toFixed(2)}${lastShipCurrency}=${sym}${targetAmount.toFixed(2)}`;
   // 创建带复制按钮的结果行
   const wrap = document.createElement('div');
@@ -4511,96 +4836,3 @@ async function loadDistributionStats() {
 }
 
 window.addEventListener('DOMContentLoaded', init);
-
-// ============ 价格同步到报价助手 ============
-async function syncPriceFromProducts() {
-  // 飞书环境无法 F12，自动显示调试面板
-  const dp = document.getElementById('debug-panel');
-  if (dp) dp.style.display = 'block';
-  const dbg = document.getElementById('debug-log');
-  if (dbg) dbg.innerHTML = ''; // 清空旧日志
-  debugLog('===== 开始同步库存价格 =====', 'info');
-  // 先强制重载库存数据，确保拿到最新价格
-  await loadProducts();
-  if (!allProducts || allProducts.length === 0) { showToast('库存系统暂无产品', 'warning'); debugLog('库存系统暂无产品', 'error'); return; }
-  let updated = 0, matchedCount = 0;
-  debugLog(`库存产品数量: ${allProducts.length}`, 'info');
-  allProducts.forEach(p => {
-    const price = parseFloat(p.price);
-    if (!p.name || Number.isNaN(price)) { console.log('[sync skip]', p.name, 'price invalid:', p.price); return; }
-    let matched = null;
-    // 1) 简称(short_name) 匹配 QUOTE_PRODUCTS 的 code（放宽：不要求 name 完全匹配）
-    if (p.short_name) {
-      matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.code) === normalizeStr(p.short_name));
-      if (matched) { console.log('[sync match1]', p.name, p.short_name, '->', matched.code, matched.price, '=>', price); debugLog(`匹配①: ${p.name}(${p.short_name}) → ${matched.code}`, 'ok'); }
-    }
-    // 2) sku 匹配 QUOTE_PRODUCTS 的 code（放宽：不要求 name 完全匹配）
-    if (!matched && p.sku) {
-      matched = QUOTE_PRODUCTS.find(qp => normalizeStr(qp.code) === normalizeStr(p.sku));
-      if (matched) { console.log('[sync match2]', p.name, p.sku, '->', matched.code, matched.price, '=>', price); debugLog(`匹配②: ${p.name}(${p.sku}) → ${matched.code}`, 'ok'); }
-    }
-    // 3) 规格数字提取匹配
-    if (!matched && p.sku) {
-      const sameName = QUOTE_PRODUCTS.filter(qp => normalizeStr(qp.name) === normalizeStr(p.name));
-      const skuSpec = extractSpecNum(p.sku);
-      if (skuSpec !== null && sameName.length > 1) {
-        matched = sameName.find(qp => extractSpecNum(qp.spec) === skuSpec);
-        if (matched) console.log('[sync match3]', p.name, p.sku, 'specNum=' + skuSpec, '->', matched.code, matched.price, '=>', price);
-      }
-    }
-    // 4) sku 与 spec 去特殊字符后匹配
-    if (!matched && p.sku) {
-      matched = QUOTE_PRODUCTS.find(qp => normalizeSpec(p.sku) === normalizeSpec(qp.spec) && normalizeStr(qp.name) === normalizeStr(p.name));
-      if (matched) console.log('[sync match4]', p.name, p.sku, '->', matched.code, matched.price, '=>', price);
-    }
-    // 5) 名称唯一匹配
-    if (!matched) {
-      const candidates = QUOTE_PRODUCTS.filter(qp => normalizeStr(qp.name) === normalizeStr(p.name));
-      if (candidates.length === 1) { matched = candidates[0]; console.log('[sync match5]', p.name, '->', matched.code, matched.price, '=>', price); }
-    }
-    if (matched) {
-      matchedCount++;
-      if (matched.price !== price) { matched.price = price; updated++; }
-    } else {
-      console.log('[sync no match]', p.name, p.short_name, p.sku, 'price=' + price);
-    }
-  });
-  // 持久化到 localStorage
-  localStorage.setItem('quote_products_prices', JSON.stringify(QUOTE_PRODUCTS.map(qp => ({ code: qp.code, name: qp.name, price: qp.price }))));
-  // 如果当前有搜索结果，强制刷新显示
-  const quoteResult = document.getElementById('quote-result');
-  if (quoteResult && quoteResult.innerHTML.trim()) {
-    const input = document.getElementById('quote-input');
-    if (input && input.value.trim()) parseQuoteInput();
-  }
-  debugLog(`同步完成：匹配 ${matchedCount} 条，更新 ${updated} 条`, updated > 0 ? 'ok' : 'warn');
-  debugLog('===== 同步结束 =====', 'info');
-  showToast(`同步完成：匹配 ${matchedCount} 条，更新 ${updated} 条`, updated > 0 ? 'success' : 'warning');
-}
-
-// 页面加载时从 localStorage 恢复已同步的价格
-function restoreQuotePrices() {
-  try {
-    const saved = localStorage.getItem('quote_products_prices');
-    if (!saved) return;
-    const map = JSON.parse(saved);
-    if (!Array.isArray(map)) return;
-    map.forEach(item => {
-      const qp = QUOTE_PRODUCTS.find(p => p.code === item.code && p.name === item.name);
-      if (qp && item.price !== undefined) qp.price = item.price;
-    });
-    console.log('[restore] 已恢复 ' + map.length + ' 条价格');
-  } catch (e) { console.warn('[restore] 恢复失败:', e); }
-}
-
-// 提取规格中的数字（mg 或 iu），如 "10mg×10vials" → 10, "5000iu*10vials" → 5000, "0.1mg" → 0.1
-function extractSpecNum(s) {
-  if (!s) return null;
-  const m = String(s).match(/(\d+\.?\d*)\s*(mg|iu|ml)/i);
-  return m ? parseFloat(m[1]) : null;
-}
-
-// 规格字符串标准化：去除 *、×、x、空格、换行等
-function normalizeSpec(s) {
-  return (s || '').toLowerCase().replace(/[*×x\s]/g, '');
-}
